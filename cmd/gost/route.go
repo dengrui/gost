@@ -244,6 +244,18 @@ func parseChainNode(ns string) (nodes []gost.Node, err error) {
 		tr = gost.UDPTransporter()
 	case "vsock":
 		tr = gost.VSOCKTransporter()
+	case "yq":
+		serverTLS := gost.DefaultTLSConfig
+		if node.Get("cert") != "" || node.Get("key") != "" {
+			serverTLS, err = tlsConfig(node.Get("cert"), node.Get("key"), node.Get("ca"))
+			if err != nil {
+				return nil, err
+			}
+		}
+		tr, err = gost.YQTransporter(node.Addr, serverTLS)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		tr = gost.TCPTransporter()
 	}

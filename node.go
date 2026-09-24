@@ -75,6 +75,7 @@ func ParseNode(s string) (node Node, err error) {
 	}
 
 	switch node.Transport {
+	case "yq":
 	case "https":
 		node.Transport = "tls"
 	case "tls", "mtls":
