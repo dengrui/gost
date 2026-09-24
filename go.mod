@@ -1,6 +1,6 @@
 module github.com/ginuerzh/gost
 
-go 1.22
+go 1.26.0
 
 replace github.com/templexxx/cpu v0.0.7 => github.com/templexxx/cpu v0.0.10-0.20211111114238-98168dcec14a
 
@@ -27,8 +27,8 @@ require (
 	github.com/xtaci/smux v1.5.24
 	github.com/xtaci/tcpraw v1.2.25
 	gitlab.com/yawning/obfs4.git v0.0.0-20220204003609-77af0cba934d
-	golang.org/x/crypto v0.24.0
-	golang.org/x/net v0.26.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.59.0
 )
 
 require (
@@ -52,9 +52,12 @@ require (
 	gitlab.com/yawning/edwards25519-extra.git v0.0.0-20211229043746-2f91fcc9fbdb // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/exp v0.0.0-20240604190554-fc45aab8b7f8 // indirect
-	golang.org/x/mod v0.18.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
-	golang.org/x/tools v0.22.0 // indirect
+	golang.org/x/mobile v0.0.0-20260908204917-8b95e45f8d3e // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/tools v0.50.0 // indirect
 )
+
+tool golang.org/x/mobile/cmd/gobind

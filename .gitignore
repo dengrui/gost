@@ -33,3 +33,5 @@ _testmain.go
 
 .vscode/
 cmd/gost/gost
+yqmobile-sources.jar
+yqmobile.aar
