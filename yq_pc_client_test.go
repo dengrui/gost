@@ -80,7 +80,7 @@ func TestYQPCClient(t *testing.T) {
 	<-timer.C
 	yqmobile.Stop()
 	if !connected.Load() {
-		t.Fatalf("never connected to %s; last error: %s", addr, yqmobile.LastError())
+		t.Fatalf("never connected to %s; see connection callback logs for errors", addr)
 	}
 }
 

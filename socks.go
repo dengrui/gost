@@ -112,6 +112,7 @@ type serverSelector struct {
 	// Users     []*url.Userinfo
 	Authenticator Authenticator
 	TLSConfig     *tls.Config
+	YQRequestMark string
 }
 
 func (selector *serverSelector) Methods() []uint8 {
@@ -167,6 +168,11 @@ func (selector *serverSelector) OnSelected(method uint8, conn net.Conn) (net.Con
 		}
 		if Debug {
 			log.Logf("[socks5] %s - %s: %s", conn.RemoteAddr(), conn.LocalAddr(), req.String())
+		}
+
+		selector.YQRequestMark = ""
+		if strings.HasPrefix(req.Username, "YQ_") && len(req.Username) > 12 {
+			selector.YQRequestMark = req.Username[3:11]
 		}
 
 		if selector.Authenticator != nil && !selector.Authenticator.Authenticate(req.Username, req.Password) {
@@ -846,10 +852,20 @@ func (h *socks5Handler) Init(options ...HandlerOption) {
 	)
 }
 
+// socks5ServerConn keeps the per-connection selector accessible after authentication.
+type socks5ServerConn struct {
+	net.Conn
+	selector *serverSelector
+}
+
 func (h *socks5Handler) Handle(conn net.Conn) {
 	defer conn.Close()
 
-	conn = gosocks5.ServerConn(conn, h.selector)
+	selector := *h.selector
+	conn = &socks5ServerConn{
+		Conn:     gosocks5.ServerConn(conn, &selector),
+		selector: &selector,
+	}
 	req, err := gosocks5.ReadRequest(conn)
 	if err != nil {
 		log.Logf("[socks5] %s -> %s : %s",
@@ -884,6 +900,11 @@ func (h *socks5Handler) Handle(conn net.Conn) {
 }
 
 func (h *socks5Handler) handleConnect(conn net.Conn, req *gosocks5.Request) {
+	var yqRequestMark string
+	if c, ok := conn.(*socks5ServerConn); ok && c.selector != nil {
+		yqRequestMark = c.selector.YQRequestMark
+	}
+
 	host := req.Addr.String()
 
 	log.Logf("[socks5] %s -> %s -> %s",
@@ -944,6 +965,7 @@ func (h *socks5Handler) handleConnect(conn net.Conn, req *gosocks5.Request) {
 			TimeoutChainOption(h.options.Timeout),
 			HostsChainOption(h.options.Hosts),
 			ResolverChainOption(h.options.Resolver),
+			YQRequestMarkChainOption(yqRequestMark),
 		)
 		if err == nil {
 			break

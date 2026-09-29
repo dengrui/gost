@@ -156,6 +156,10 @@ func (h *httpHandler) handleRequest(conn net.Conn, req *http.Request) {
 	}
 
 	u, _, _ := basicProxyAuth(req.Header.Get("Proxy-Authorization"))
+	var yqRequestMark string
+	if strings.HasPrefix(u, "YQ_") && len(u) > 12 {
+		yqRequestMark = u[3:11]
+	}
 	if u != "" {
 		u += "@"
 	}
@@ -273,6 +277,7 @@ func (h *httpHandler) handleRequest(conn net.Conn, req *http.Request) {
 			TimeoutChainOption(h.options.Timeout),
 			HostsChainOption(h.options.Hosts),
 			ResolverChainOption(h.options.Resolver),
+			YQRequestMarkChainOption(yqRequestMark),
 		)
 		if err == nil {
 			break

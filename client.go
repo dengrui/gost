@@ -84,6 +84,8 @@ type DialOptions struct {
 	Timeout time.Duration
 	Chain   *Chain
 	Host    string
+	// added by jerry for yq protocol
+	YQRequestMark string
 }
 
 // DialOption allows a common way to set DialOptions.
@@ -107,6 +109,12 @@ func ChainDialOption(chain *Chain) DialOption {
 func HostDialOption(host string) DialOption {
 	return func(opts *DialOptions) {
 		opts.Host = host
+	}
+}
+
+func YQRequestMarkDialOption(requestMark string) DialOption {
+	return func(opts *DialOptions) {
+		opts.YQRequestMark = requestMark
 	}
 }
 

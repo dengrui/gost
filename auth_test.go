@@ -189,3 +189,40 @@ func TestLocalAuthenticatorReload(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalAuthenticatorYQPrefix(t *testing.T) {
+	tests := []struct {
+		name, user, password string
+		valid                bool
+	}{
+		{"prefixed user", "YQ_12345678_tom", "secret", true},
+		{"incorrect password", "YQ_12345678_tom", "wrong", false},
+		{"unknown user", "YQ_12345678_bob", "secret", false},
+		{"ordinary user", "tom", "secret", true},
+		{"other prefix unchanged", "YQ@12345678_tom", "secret", false},
+		{"case sensitive prefix", "yq_12345678_tom", "secret", false},
+		{"short username unchanged", "YQ_short", "short", true},
+		{"exactly twelve bytes unchanged", "YQ_12345678_", "boundary", true},
+		{"one byte suffix", "YQ_12345678_a", "single", true},
+		{"unicode suffix", "YQ_12345678_用户", "unicode", true},
+		{"empty stored password", "YQ_12345678_guest", "anything", true},
+	}
+	au := NewLocalAuthenticator(map[string]string{
+		"tom": "secret", "YQ_short": "short", "YQ_12345678_": "boundary",
+		"a": "single", "用户": "unicode", "guest": "",
+	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := au.Authenticate(tc.user, tc.password); got != tc.valid {
+				t.Fatalf("Authenticate(%q) = %v, want %v", tc.user, got, tc.valid)
+			}
+		})
+	}
+	var nilAuth *LocalAuthenticator
+	if !nilAuth.Authenticate("YQ_12345678_tom", "anything") {
+		t.Fatal("nil authenticator behavior changed")
+	}
+	if !NewLocalAuthenticator(nil).Authenticate("YQ_12345678_tom", "anything") {
+		t.Fatal("empty authenticator behavior changed")
+	}
+}

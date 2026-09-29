@@ -42,6 +42,12 @@ func (au *LocalAuthenticator) Authenticate(user, password string) bool {
 		return true
 	}
 
+	// 添加对yq协议的支持,现在用户名可以写为: YQ_[8字节用户ID]_[真实的user名称]
+	// yq需要8字节用户ID用来将请求绑定到手机池中的同一台手机
+	if strings.HasPrefix(user, "YQ_") && len(user) > 12 {
+		user = user[12:]
+	}
+
 	v, ok := au.kvs[user]
 	return ok && (v == "" || password == v)
 }

@@ -7,8 +7,6 @@ import android.widget.Button;
 
 import androidx.annotation.Nullable;
 
-import com.abc.yqsdk.YQSdk;
-
 import yqmobile.ConnectionListener;
 import yqmobile.Yqmobile;
 
@@ -29,7 +27,21 @@ public class MainActivity extends Activity {
                         Log.i("RRR", "status:" + status + ",err:" + err);
                     }
                 });
-                Yqmobile.start("192.168.200.9:8081");
+
+                Yqmobile.start("192.168.200.20:8081");
+                new Thread(){
+                    @Override
+                    public void run() {
+                        while(true) {
+                            Log.i("RRR", "thread run...");
+                            try {
+                                Thread.sleep(10000);
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+                }.start();
             } catch (Exception e) {
                 Log.e("RRR", "exception:" + e);
             }

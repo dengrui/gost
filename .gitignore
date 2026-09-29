@@ -35,3 +35,6 @@ _testmain.go
 cmd/gost/gost
 yqmobile-sources.jar
 yqmobile.aar
+
+.idea
+__debug_*

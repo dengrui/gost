@@ -206,7 +206,7 @@ func (c *Chain) dialWithOptions(ctx context.Context, network, address string, op
 		return d.DialContext(ctx, network, ipAddr)
 	}
 
-	conn, err := route.getConn(ctx)
+	conn, err := route.getConn(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +266,7 @@ func (c *Chain) Conn(opts ...ChainOption) (conn net.Conn, err error) {
 		if err != nil {
 			continue
 		}
-		conn, err = route.getConn(ctx)
+		conn, err = route.getConn(ctx, options)
 		if err == nil {
 			break
 		}
@@ -275,7 +275,7 @@ func (c *Chain) Conn(opts ...ChainOption) (conn net.Conn, err error) {
 }
 
 // getConn obtains a connection to the last node of the chain.
-func (c *Chain) getConn(ctx context.Context) (conn net.Conn, err error) {
+func (c *Chain) getConn(ctx context.Context, options *ChainOptions) (conn net.Conn, err error) {
 	if c.IsEmpty() {
 		err = ErrEmptyChain
 		return
@@ -283,7 +283,11 @@ func (c *Chain) getConn(ctx context.Context) (conn net.Conn, err error) {
 	nodes := c.Nodes()
 	node := nodes[0]
 
-	cc, err := node.Client.Dial(node.Addr, node.DialOptions...)
+	opts := append([]DialOption{}, node.DialOptions...)
+	if options != nil {
+		opts = append(opts, YQRequestMarkDialOption(options.YQRequestMark))
+	}
+	cc, err := node.Client.Dial(node.Addr, opts...)
 	if err != nil {
 		node.MarkDead()
 		return
@@ -367,11 +371,12 @@ func (c *Chain) selectRouteFor(addr string) (route *Chain, err error) {
 
 // ChainOptions holds options for Chain.
 type ChainOptions struct {
-	Retries  int
-	Timeout  time.Duration
-	Hosts    *Hosts
-	Resolver Resolver
-	Mark     int
+	Retries       int
+	Timeout       time.Duration
+	Hosts         *Hosts
+	Resolver      Resolver
+	Mark          int
+	YQRequestMark string
 }
 
 // ChainOption allows a common way to set chain options.
@@ -402,5 +407,11 @@ func HostsChainOption(hosts *Hosts) ChainOption {
 func ResolverChainOption(resolver Resolver) ChainOption {
 	return func(opts *ChainOptions) {
 		opts.Resolver = resolver
+	}
+}
+
+func YQRequestMarkChainOption(mark string) ChainOption {
+	return func(opts *ChainOptions) {
+		opts.YQRequestMark = mark
 	}
 }

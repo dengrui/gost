@@ -139,3 +139,105 @@ func TestYQReverseQUIC(t *testing.T) {
 		t.Fatalf("closed Dial: %v", err)
 	}
 }
+
+func TestYQRequestMarkBinding(t *testing.T) {
+	cert, err := GenCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, err := YQTransporter("127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := transport.(*yqTransporter)
+	defer tr.Close()
+	addr := tr.listener.Addr().String()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var phones []quic.Connection
+	for i := 0; i < 2; i++ {
+		phone, err := quic.DialAddr(ctx, addr, tlsConfigQUICALPN(&tls.Config{InsecureSkipVerify: true}), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer phone.CloseWithError(0, "done")
+		phones = append(phones, phone)
+	}
+	waitFor := func(ready func() bool) {
+		t.Helper()
+		for {
+			tr.mu.Lock()
+			ok := ready()
+			tr.mu.Unlock()
+			if ok {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
+	waitFor(func() bool { return len(tr.sessions) == 2 })
+	dial := func(mark string) string {
+		t.Helper()
+		conn, err := tr.Dial(addr, YQRequestMarkDialOption(mark))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		return conn.RemoteAddr().String()
+	}
+	a := dial("12345678")
+	b := dial("87654321")
+	if a == b {
+		t.Fatal("new marks should distribute across both phones")
+	}
+	// Concurrent requests with one mark must all reuse the same phone.
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, err := tr.Dial(addr, YQRequestMarkDialOption("12345678"))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer conn.Close()
+			if got := conn.RemoteAddr().String(); got != a {
+				t.Errorf("same mark changed phone: got %s, want %s", got, a)
+			}
+		}()
+	}
+	wg.Wait()
+	if dial("") == dial("") {
+		t.Fatal("unmarked requests should continue round robin")
+	}
+	_, boundPort, _ := net.SplitHostPort(a)
+	for _, phone := range phones {
+		_, phonePort, _ := net.SplitHostPort(phone.LocalAddr().String())
+		if phonePort == boundPort {
+			phone.CloseWithError(0, "disconnect bound phone")
+		}
+	}
+	waitFor(func() bool { return len(tr.sessions) == 1 && tr.bindings["12345678"] == nil })
+	if got := dial("12345678"); got != b {
+		t.Fatalf("disconnected mark did not move to remaining phone: %s", got)
+	}
+	if got := dial("87654321"); got != b {
+		t.Fatalf("unaffected mark moved: %s", got)
+	}
+	for _, phone := range phones {
+		phone.CloseWithError(0, "all phones disconnected")
+	}
+	waitFor(func() bool { return len(tr.sessions) == 0 && len(tr.bindings) == 0 })
+	if _, err := tr.Dial(addr, YQRequestMarkDialOption("12345678")); err == nil {
+		t.Fatal("expected error when all phones are offline")
+	}
+	tr.Close()
+	if _, err := tr.Dial(addr, YQRequestMarkDialOption("12345678")); err != net.ErrClosed {
+		t.Fatalf("closed Dial: %v", err)
+	}
+}

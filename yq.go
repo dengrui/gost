@@ -19,6 +19,7 @@ type yqTransporter struct {
 	listener *quic.Listener
 	mu       sync.Mutex
 	sessions []quic.Connection
+	bindings map[string]quic.Connection
 	next     uint64
 	closed   bool
 }
@@ -38,7 +39,7 @@ func YQTransporter(addr string, config *tls.Config) (Transporter, error) {
 	if err != nil {
 		return nil, err
 	}
-	tr := &yqTransporter{listener: listener}
+	tr := &yqTransporter{listener: listener, bindings: make(map[string]quic.Connection)}
 	go tr.acceptLoop()
 	log.Logf("[yq] listening on %s (QUIC/UDP)", listener.Addr())
 	return tr, nil
@@ -64,10 +65,15 @@ func (tr *yqTransporter) acceptLoop() {
 			<-conn.Context().Done()
 			tr.mu.Lock()
 			for i, session := range tr.sessions {
-				
+
 				if session == conn {
 					tr.sessions = append(tr.sessions[:i], tr.sessions[i+1:]...)
 					break
+				}
+			}
+			for mark, session := range tr.bindings {
+				if session == conn {
+					delete(tr.bindings, mark)
 				}
 			}
 			tr.mu.Unlock()
@@ -86,36 +92,66 @@ func (tr *yqTransporter) Dial(addr string, options ...DialOption) (net.Conn, err
 	if timeout <= 0 {
 		timeout = DialTimeout
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		session, err := tr.selectSession(opts.YQRequestMark)
+		if err != nil {
+			return nil, err
+		}
+		stream, err := session.OpenStreamSync(ctx)
+		if err != nil {
+			// A phone may disconnect after selection. Rebind within the same timeout.
+			if session.Context().Err() != nil {
+				continue
+			}
+			return nil, err
+		}
+		log.Logf("[yq] Dial -> choose connected phone: %s", session.RemoteAddr())
+		return &yqStreamConn{quicConn: &quicConn{
+			Stream: stream, laddr: session.LocalAddr(), raddr: session.RemoteAddr(),
+		}}, nil
+	}
+}
+
+// selectSession keeps bindings stable while the selected phone is online.
+func (tr *yqTransporter) selectSession(mark string) (quic.Connection, error) {
 	tr.mu.Lock()
+	defer tr.mu.Unlock()
 	if tr.closed {
-		tr.mu.Unlock()
 		return nil, net.ErrClosed
 	}
-	// Remove closed sessions even if their cleanup goroutine has not run yet.
+	if mark != "" {
+		if session := tr.bindings[mark]; session != nil {
+			if session.Context().Err() == nil {
+				return session, nil
+			}
+			delete(tr.bindings, mark)
+		}
+	}
+	// Cleanup may not have run yet; exclude disconnected phones before selecting.
 	live := tr.sessions[:0]
 	for _, session := range tr.sessions {
 		if session.Context().Err() == nil {
 			live = append(live, session)
 		}
 	}
+	for i := len(live); i < len(tr.sessions); i++ {
+		tr.sessions[i] = nil
+	}
 	tr.sessions = live
 	if len(live) == 0 {
-		tr.mu.Unlock()
 		return nil, errors.New("yq: no phone connected")
 	}
 	session := live[tr.next%uint64(len(live))]
 	tr.next++
-	tr.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	stream, err := session.OpenStreamSync(ctx)
-	if err != nil {
-		return nil, err
+	if mark != "" {
+		tr.bindings[mark] = session
 	}
-	return &yqStreamConn{quicConn: &quicConn{
-		Stream: stream, laddr: session.LocalAddr(), raddr: session.RemoteAddr(),
-	}}, nil
+	return session, nil
 }
 
 func (tr *yqTransporter) Handshake(conn net.Conn, options ...HandshakeOption) (net.Conn, error) {
@@ -134,6 +170,7 @@ func (tr *yqTransporter) Close() error {
 	tr.closed = true
 	sessions := tr.sessions
 	tr.sessions = nil
+	tr.bindings = nil
 	tr.mu.Unlock()
 	err := tr.listener.Close()
 	for _, session := range sessions {
